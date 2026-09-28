@@ -211,3 +211,39 @@ class UnitGCN(nn.Module):
         graph_feature = graph_feature.reshape(N, -1, V, V)
 
         return out, graph_feature
+
+class GCNBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, A, stride=1, residual=True):
+        super().__init__()
+
+        self.gcn = UnitGCN(in_channels, out_channels, A)
+
+        self.tcn = MultiScaleTCN(out_channels, out_channels, stride=stride, num_joint=A.shape[-1])
+
+        if not residual:
+            self.residual = None
+
+        elif (in_channels == out_channels and stride == 1):
+            self.residual = nn.Identity()
+
+        else:
+            self.residual = UnitTCN(in_channels, out_channels, kernel_size=1, stride=stride)
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+
+        if self.residual is None:
+            residual = 0
+        else:
+            residual = self.residual(x)
+
+        x, graph = self.gcn(x)
+
+        x = self.tcn(x)
+
+        x = x + residual
+
+        x = self.relu(x)
+
+        return x, graph
