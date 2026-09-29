@@ -12,7 +12,7 @@ class PrototypeReconstructionNetwork(nn.Module):
         self.query = nn.Linear(dim, num_prototypes, bias=False)
         self.memory = nn.Linear(num_prototypes, dim, bias=False)
 
-        self.dropout = nn.Dropout(inplace=True)
+        self.dropout = nn.Dropout(dropout, inplace=True)
 
     def forward(self, x):
         query = self.query(x)
@@ -44,7 +44,7 @@ class ProtoGCNBackbone(nn.Module):
 
         self.num_node = 25
         self.in_channels = in_channels
-        self.data_bn = nn.BatchNorm2d(in_channels * self.num_node)
+        self.data_bn = nn.BatchNorm1d(in_channels * self.num_node)
 
         blocks = []
         current_channels = base_channels
@@ -58,7 +58,8 @@ class ProtoGCNBackbone(nn.Module):
         for stage in range(2, num_stages + 1):
             in_c = current_channels
 
-            if stage in inflate_stage: inflate_stage += 1
+            if stage in inflate_stage:
+                inflate_times += 1
 
             out_c = int(base_channels * (ch_ratio ** inflate_times))
 
@@ -102,6 +103,7 @@ class ProtoGCNBackbone(nn.Module):
 
         # GCN Format
         x = x.view(N, M, V, C, T).contiguous()
+        x = x.permute(0, 1, 3, 4, 2).contiguous()
 
         # [N*M, C, T, V]
         x = x.view(N*M, C, T, V)
@@ -177,7 +179,7 @@ class ProtoGCNHead(nn.Module):
         """
 
         # Person-wise T, V pooling
-        person_features = x.mean(dim=(-2, 1)) # [N, M, C]
+        person_features = x.mean(dim=(-2, -1)) # [N, M, C]
 
         # Original ProtoGCN person pooling
         scene_feature = person_features.mean(dim=1) # [N, C]
@@ -199,7 +201,7 @@ class ProtoGCNBaseline(nn.Module):
 
     def forward(self, x, return_features=False):
         if return_features:
-            (feature, reconstructed_graph, stages) = self.backbone(x, return_features=True)
+            (feature, reconstructed_graph, stages) = self.backbone(x, return_stages=True)
             (logits, person_features, scene_feature) = self.head(feature, return_features=True)
 
             return {"logits": logits, "reconstructed_graph": reconstructed_graph, "person_features": person_features, "scene_feature": scene_feature, "stages": stages}
@@ -209,19 +211,45 @@ class ProtoGCNBaseline(nn.Module):
 
         return logits, reconstructed_graph
 
-        
 
+if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    print("Device:", device)
 
+    if torch.cuda.is_available():
+        print("GPU:", torch.cuda.get_device_name(0))
 
+    model = ProtoGCNBaseline(num_classes=60).to(device)
+    model.eval()
 
+    # [N, M, T, V, C]
+    x = torch.randn(
+        2,      # batch
+        2,      # persons
+        100,    # frames
+        25,     # joints
+        3,      # xyz
+        device=device
+    )
 
+    print("Input:", x.shape)
 
+    with torch.no_grad():
+        outputs = model(x, return_features=True)
 
+    print("\n")
+    print("=== Final Outputs ===")
+    print("Logits              :", outputs["logits"].shape)
+    print("Reconstructed graph :", outputs["reconstructed_graph"].shape)
+    print("Person features     :", outputs["person_features"].shape)
+    print("Scene feature       :", outputs["scene_feature"].shape)
 
+    print("\n")
+    print("=== Multi-Level Features ===")
 
+    for i, stage in enumerate(outputs["stages"], start=1):
+        print(f"Stage {i}:", stage.shape)
 
-
-
-
-
+    print("\n")
+    print("Forward test: PASS")

@@ -17,7 +17,7 @@ class UnitTCN(nn.Module):
 
         self.dropout = nn.Dropout(dropout, inplace=True)
 
-    def foeward(self, x):
+    def forward(self, x):
         x = self.conv(x)
         x = self.bn(x)
         x = self.dropout(x)
@@ -70,7 +70,7 @@ class MultiScaleTCN(nn.Module):
                     UnitTCN(branch_channels, branch_channels, kernel_size=kernel_size, stride=stride, dilation=dilation, norm=False)
                 )
 
-                branches.append(branch)
+            branches.append(branch)
 
         self.branches = nn.ModuleList(branches)
 
@@ -102,9 +102,9 @@ class MultiScaleTCN(nn.Module):
 
         local_feat = out[..., :V]
 
-        global_feat = out[..., :V]
+        global_feat = out[..., V]
 
-        global_feat = torch.einsum("nct, v->nctv", global_feat, self.add_coeff[:V])
+        global_feat = torch.einsum("nct,v->nctv", global_feat, self.add_coeff[:V])
 
         out = local_feat + global_feat
 
@@ -187,7 +187,7 @@ class UnitGCN(nn.Module):
         A = A + inter_graph
 
         # Intra topology
-        intra_graph = torch.einsum("nkctv,nkctw->nktvm", x1, x2)
+        intra_graph = torch.einsum("nkctv,nkctw->nktvw", x1, x2)
         intra_graph = intra_graph[:, :, None]
         intra_graph = torch.softmax(intra_graph, dim=-2)
         intra_graph = (intra_graph * self.beta[0])
