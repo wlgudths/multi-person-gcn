@@ -2,8 +2,10 @@ import csv
 import json
 import torch
 import torch.nn.functional as F
+
 from tqdm import tqdm
 from pathlib import Path
+from tabulate import tabulate
 from datetime import datetime
 from torch.utils.tensorboard import SummaryWriter
 
@@ -168,21 +170,80 @@ class Trainer:
                 self.save_checkpoint("best.pth", epoch)
 
             self._log(epoch, train_metrics, val_metrics, lr)
-
-            msg = (
-                f"Epoch {epoch:03d} | "
-                f"Train Loss {train_metrics['loss']:.4f} | "
-                f"Train Acc {train_metrics['acc']:.2f}%"
-            )
-
-            if val_metrics is not None:
-                msg += (
-                    f" | Val Loss {val_metrics['loss']:.4f}"
-                    f" | Val Acc {val_metrics['acc']:.2f}%"
-                )
-
-            msg += f" | LR {lr:.6f}"
-
-            print(msg)
+            self._print_epoch(epoch, train_metrics, val_metrics, lr)
 
         self.writer.close()
+
+    def resume(self, checkpoint_path):
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
+
+        self.model.load_state_dict(checkpoint["model"])
+        self.criterion.load_state_dict(checkpoint["criterion"])
+        self.optimizer.load_state_dict(checkpoint["optimizer"])
+
+        if self.scheduler is not None and "scheduler" in checkpoint:
+            self.scheduler.load_state_dict(checkpoint["scheduler"])
+
+        self.start_epoch = checkpoint["epoch"] + 1
+        self.best_acc = checkpoint.get("best_acc", 0.0)
+
+        print("Resume epoch :", self.start_epoch)
+        print("Best accuracy:", self.best_acc)
+
+    def _log(self, epoch, train_metrics, val_metrics, lr):
+        self.writer.add_scalar("train/loss", train_metrics["loss"], epoch)
+        self.writer.add_scalar("train/loss_ce", train_metrics["loss_ce"], epoch)
+        self.writer.add_scalar("train/loss_csc", train_metrics["loss_csc"], epoch)
+        self.writer.add_scalar("train/accuracy", train_metrics["acc"], epoch)
+        self.writer.add_scalar("train/lr", lr, epoch)
+
+        val_loss = ""
+        val_acc = ""
+
+        if val_metrics is not None:
+            val_loss = val_metrics["loss"]
+            val_acc = val_metrics["acc"]
+
+            self.writer.add_scalar("val/loss", val_loss, epoch)
+            self.writer.add_scalar("val/accuracy", val_acc, epoch)
+
+        with open(self.csv_path, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                epoch,
+                train_metrics["loss"],
+                train_metrics["loss_ce"],
+                train_metrics["loss_csc"],
+                train_metrics["acc"],
+                val_loss,
+                val_acc,
+                lr])
+
+    def save_checkpoints(self, filename, epoch):
+        checkpoint = {
+            "epoch": epoch,
+            "model": self.model.state_dict(),
+            "criterion": self.criterion.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "best_acc": self.best_acc
+        }
+
+        if self.scheduler is not None:
+            checkpoint["scheduler"] = self.scheduler.state_dict()
+
+        torch.save(checkpoint, self.rundir / filename)
+
+    def _print_epoch(self, epoch, train_metrics, val_metrics, lr):
+        val_loss = f"{val_metrics["loss"]:.4f}" if val_metrics is not None else "-"
+        val_acc = f"{val_metrics["acc"]:.2f}" if val_metrics is not None else "-"
+
+        table = [
+            ["Loss", f"{train_metrics['loss']:.4f}", val_loss],
+            ["CE Loss", f"{train_metrics['loss_ce']:.4f}", "-"],
+            ["CSC Loss", f"{train_metrics['loss_csc']:.4f}", "-"],
+            ["Accuracy", f"{train_metrics['acc']:.2f}%", val_acc],
+            ["LR", f"{lr:.6f}", "-"]
+        ]
+
+        print(f"\nEpoch {epoch}/{self.epochs}")
+        print(tabulate(table, headers=["Metric", "Train", "Validation"], tablefmt="grid"))
