@@ -42,19 +42,7 @@ def train():
         weight_decay=opt_cfg["weight_decay"]
     ) 
 
-    trainer_cfg = config["trainer"]
-    trainer = Trainer(
-        model=model,
-        criterion=criterion,
-        optimizer=optimizer,
-        device=device,
-        epochs=trainer_cfg["epochs"],
-        val_interval=trainer_cfg["epochs"],
-        save_dir=config["experiment"]["save_dir"]
-        exp_name=config["experiment"]["name"],
-        use_amp=True
-    )
-
+    trainer = Trainer(model=model, criterion=criterion, optimizer=optimizer, device=device, config=config)
     trainer.fit(train_loader, val_loader)
 
 

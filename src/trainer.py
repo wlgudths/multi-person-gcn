@@ -11,37 +11,41 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 class Trainer:
-    def __init__(self, model, criterion, optimizer, device, epochs=150, scheduler=None, val_interval=5, save_dir="experiments", exp_name="gcn", config=None, use_amp=True, grad_clip=None):
+    def __init__(self, model, criterion, optimizer, device, config, scheduler=None):
         self.model = model
         self.criterion = criterion
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.device = device
-        self.val_interval = val_interval
+        self.config = config
 
-        self.epochs = epochs
-        self.grad_clip = grad_clip
-        self.use_amp = use_amp and device.type == "cuda"
+        exp_cfg = config["experiment"]
+        trainer_cfg = config["trainer"]
+        
+        self.epochs = trainer_cfg["epochs"]
+        self.val_interval = trainer_cfg["val_interval"]
+        self.grad_clip = trainer_cfg["grad_clip"]
+        self.use_amp = trainer_cfg["use_amp"] and device.type == "cuda"
 
         self.start_epoch = 1
         self.best_acc = 0.0
 
         run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.run_dir = Path(save_dir) / exp_name / run_name
+        self.run_dir = Path(exp_cfg["save_dir"]) / exp_cfg["name"] / run_name
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.writer = SummaryWriter(self.run_dir / "tensorboard")
         self.csv_path = self.run_dir / "train.csv"
-
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
 
-        if config is not None:
-            with open(self.run_dir / "config.json", "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=4, default=str)
+        with open(self.run_dir / "config.json", "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4, default=str)
 
         self._init_csv()
 
         print("Experiment :", self.run_dir)
+        print("Epochs     :", self.epochs)
+        print("Val interval:", self.val_interval)
         print("AMP        :", self.use_amp)
 
     def _init_csv(self):
@@ -50,7 +54,7 @@ class Trainer:
 
         with open(self.csv_path, "w", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
-            writer.writerow(["epoch", "ttrain_loss", "train_ce", "trian_csc", "train_acc", "val_loss", "val_acc", "lr"])
+            writer.writerow(["epoch", "train_loss", "train_ce", "trian_csc", "train_acc", "val_loss", "val_acc", "lr"])
 
     def train_one_epoch(self, loader, epoch):
         self.model.train()
@@ -110,7 +114,7 @@ class Trainer:
         }
 
     @torch.no_grad()
-    def validate(self, loader, epoch=None):
+    def validate(self, loader, epoch):
         self.model.eval()
 
         total_loss = 0.0
@@ -144,9 +148,8 @@ class Trainer:
             "acc": 100.0 * total_correct / total_samples
         }
 
-
     def fit(self, train_loader, val_loader=None):
-        for epoch in range(self.start_epoch, self.epochs):
+        for epoch in range(self.start_epoch, self.epochs + 1):
             train_metrics = self.train_one_epoch(train_loader, epoch)
 
             val_metrics = None
@@ -159,16 +162,16 @@ class Trainer:
 
             if self.scheduler is not None:
                 if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                    self.scheduler.step(val_metrics["loss"])
+                    if val_metrics is not None:
+                        self.scheduler.step(val_metrics["loss"])
                 else:
                     self.scheduler.step()
-
-                self.save_checkpoint("last.pth", epoch)
 
             if val_metrics is not None and val_metrics["acc"] > self.best_acc:
                 self.best_acc = val_metrics["acc"]
                 self.save_checkpoint("best.pth", epoch)
 
+            self.save_checkpoint("last.pth", epoch)
             self._log(epoch, train_metrics, val_metrics, lr)
             self._print_epoch(epoch, train_metrics, val_metrics, lr)
 
