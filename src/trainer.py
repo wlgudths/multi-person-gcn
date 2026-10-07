@@ -27,10 +27,10 @@ class Trainer:
         self.best_acc = 0.0
 
         run_name = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.rundir = Path(save_dir) / exp_name / run_name
-        self.rundir.mkdir(parents=True, exist_ok=True)
+        self.run_dir = Path(save_dir) / exp_name / run_name
+        self.run_dir.mkdir(parents=True, exist_ok=True)
 
-        self.writer = SummaryWriter(self.rundir / "tensorboard")
+        self.writer = SummaryWriter(self.run_dir / "tensorboard")
         self.csv_path = self.run_dir / "train.csv"
 
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
@@ -131,7 +131,7 @@ class Trainer:
 
             total_loss += loss.item() * batch_size
             pred = logits.argmax(dim=1)
-            total_corrrect += (pred == labels).sum().item()
+            total_correct += (pred == labels).sum().item()
             total_samples += batch_size
 
             pbar.set_postfix(
@@ -219,7 +219,7 @@ class Trainer:
                 val_acc,
                 lr])
 
-    def save_checkpoints(self, filename, epoch):
+    def save_checkpoint(self, filename, epoch):
         checkpoint = {
             "epoch": epoch,
             "model": self.model.state_dict(),
@@ -231,11 +231,11 @@ class Trainer:
         if self.scheduler is not None:
             checkpoint["scheduler"] = self.scheduler.state_dict()
 
-        torch.save(checkpoint, self.rundir / filename)
+        torch.save(checkpoint, self.run_dir / filename)
 
     def _print_epoch(self, epoch, train_metrics, val_metrics, lr):
-        val_loss = f"{val_metrics["loss"]:.4f}" if val_metrics is not None else "-"
-        val_acc = f"{val_metrics["acc"]:.2f}" if val_metrics is not None else "-"
+        val_loss = f"{val_metrics['loss']:.4f}" if val_metrics is not None else "-"
+        val_acc = f"{val_metrics['acc']:.2f}" if val_metrics is not None else "-"
 
         table = [
             ["Loss", f"{train_metrics['loss']:.4f}", val_loss],
