@@ -1,40 +1,57 @@
 import torch
+import argparse
 
-from src.dataset.loader import get_dummy_ntu_loader
+from src.dataset.loader import build_loaders
 from src.models.protogcn import ProtoGCNBaseline
 from src.loss import ProtoGCNLoss
 from src.trainer import Trainer
-from src.utils import set_seed
+from src.utils import load_config, set_seed
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default="configs/dummy_ntu.yaml")
+
+    return parser.parse_args()
 
 def train():
-    set_seed(42)
+    args = parse_args()
+    config = load_config(args.config)
+
+    set_seed(config["experiment"]["seed"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device: ", device)
 
     if torch.cuda.is_available(): print("GPU: ", torch.cuda.get_device_name(0))
 
-    train_loader, val_loader = get_dummy_ntu_loader(batch_size=8, train_samples=64, val_samples=32, num_classes=4)
+    train_loader, val_loader = build_loaders(config)
 
-    model = ProtoGCNBaseline(num_classes=4).to(device)
-    criterion = ProtoGCNLoss(num_classes=4).to(device)
+    model_cfg = config["model"]
+    loss_cfg = config["loss"]
+    opt_cfg = config["optimizer"]
+
+    model = ProtoGCNBaseline(num_classes=model_cfg["num_classes"]).to(device)
+    criterion = ProtoGCNLoss(num_classes=model_cfg["num_classes"], csc_weight=loss_cfg["csc_weight"]).to(device)
 
     # 추후 수정 예정
     optimizer = torch.optim.SGD(
         list(model.parameters()) + list(criterion.parameters()),
-        lr=0.01,
-        momentum=0.9,
-        weight_decay=5e-4
+        lr=opt_cfg["lr"],
+        momentum=opt_cfg["momentum"],
+        weight_decay=opt_cfg["weight_decay"]
     ) 
 
+    trainer_cfg = config["trainer"]
     trainer = Trainer(
         model=model,
         criterion=criterion,
         optimizer=optimizer,
         device=device,
-        epochs=10,
-        val_interval=2,
-        exp_name="dummy_ntu_test",
+        epochs=trainer_cfg["epochs"],
+        val_interval=trainer_cfg["epochs"],
+        save_dir=config["experiment"]["save_dir"]
+        exp_name=config["experiment"]["name"],
         use_amp=True
     )
 
