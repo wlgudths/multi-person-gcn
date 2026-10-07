@@ -9,13 +9,13 @@ def build_loaders(config):
     name = data_cfg["name"]
     
     if name == "dummy_ntu":
-        return get_dummy_ntu_loader(data_cfg, seed)
+        return get_dummy_ntu_loaders(data_cfg, seed)
 
     raise ValueError(f"Unsupported dataset: {name}")
 
 
 
-def get_dummy_ntu_loader(config, seed):
+def get_dummy_ntu_loaders(config, seed):
     train_dataset = DummyNTUDataset(
         num_samples=config["train_samples"],
         num_classes=config["num_classes"],
