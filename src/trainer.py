@@ -5,8 +5,10 @@ import torch.nn.functional as F
 
 from tqdm import tqdm
 from pathlib import Path
+from loguru import logger
 from tabulate import tabulate
 from datetime import datetime
+from src.utils.logger import setup_logger
 from torch.utils.tensorboard import SummaryWriter
 
 
@@ -34,6 +36,8 @@ class Trainer:
         self.run_dir = Path(exp_cfg["save_dir"]) / exp_cfg["name"] / run_name
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
+        setup_logger(self.run_dir)
+
         self.writer = SummaryWriter(self.run_dir / "tensorboard")
         self.csv_path = self.run_dir / "train.csv"
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.use_amp)
@@ -43,10 +47,16 @@ class Trainer:
 
         self._init_csv()
 
-        print("Experiment :", self.run_dir)
-        print("Epochs     :", self.epochs)
-        print("Val interval:", self.val_interval)
-        print("AMP        :", self.use_amp)
+        logger.info(f"Experiment: {self.run_dir}")
+        logger.info(f"Device: {self.device}")
+
+        if self.device.type == "cuda":
+            logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
+
+        logger.info(f"Experiment : {self.run_dir}")
+        logger.info(f"Epochs     : {self.epochs}")
+        logger.info(f"Val interval: {self.val_interval}")
+        logger.info(f"AMP        : {self.use_amp}")
 
     def _init_csv(self):
         if self.csv_path.exists():
@@ -170,6 +180,7 @@ class Trainer:
             if val_metrics is not None and val_metrics["acc"] > self.best_acc:
                 self.best_acc = val_metrics["acc"]
                 self.save_checkpoint("best.pth", epoch)
+                logger.info(f"New best accuracy: {self.best_acc:.2f}% at epoch {epoch}")
 
             self.save_checkpoint("last.pth", epoch)
             self._log(epoch, train_metrics, val_metrics, lr)
@@ -190,8 +201,8 @@ class Trainer:
         self.start_epoch = checkpoint["epoch"] + 1
         self.best_acc = checkpoint.get("best_acc", 0.0)
 
-        print("Resume epoch :", self.start_epoch)
-        print("Best accuracy:", self.best_acc)
+        logger.info(f"Resume epoch : {self.start_epoch}")
+        logger.info(f"Best accuracy: {self.best_acc}") 
 
     def _log(self, epoch, train_metrics, val_metrics, lr):
         self.writer.add_scalar("train/loss", train_metrics["loss"], epoch)
@@ -234,11 +245,14 @@ class Trainer:
         if self.scheduler is not None:
             checkpoint["scheduler"] = self.scheduler.state_dict()
 
-        torch.save(checkpoint, self.run_dir / filename)
+        path = self.run_dir / filename
+        
+        torch.save(checkpoint, path)
+        logger.info(f"Checkpoint saved: {path}")
 
     def _print_epoch(self, epoch, train_metrics, val_metrics, lr):
         val_loss = f"{val_metrics['loss']:.4f}" if val_metrics is not None else "-"
-        val_acc = f"{val_metrics['acc']:.2f}" if val_metrics is not None else "-"
+        val_acc = f"{val_metrics['acc']:.2f}%" if val_metrics is not None else "-"
 
         table = [
             ["Loss", f"{train_metrics['loss']:.4f}", val_loss],
@@ -247,6 +261,6 @@ class Trainer:
             ["Accuracy", f"{train_metrics['acc']:.2f}%", val_acc],
             ["LR", f"{lr:.6f}", "-"]
         ]
-
-        print(f"\nEpoch {epoch}/{self.epochs}")
-        print(tabulate(table, headers=["Metric", "Train", "Validation"], tablefmt="grid"))
+        result = tabulate(table, headers=["Metric", "Train", "Validation"], tablefmt="grid")
+        logger.info(f"\nEpoch {epoch}/{self.epochs}\n{result}")
+        

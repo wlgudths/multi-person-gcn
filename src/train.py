@@ -21,10 +21,6 @@ def train():
     set_seed(config["experiment"]["seed"])
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device: ", device)
-
-    if torch.cuda.is_available(): print("GPU: ", torch.cuda.get_device_name(0))
-
     train_loader, val_loader = build_loaders(config)
 
     model_cfg = config["model"]
