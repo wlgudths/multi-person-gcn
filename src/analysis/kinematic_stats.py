@@ -1,4 +1,6 @@
 import torch
+from collections import defaultdict
+from torch.utils.data import DataLoader
 
 
 def compute_kinematics(x):
@@ -51,17 +53,43 @@ def compute_joint_statistics(x):
         "path_max": path_length.amax(dim=(0, 1)),
     }
 
+@torch.no_grad()
+def compute_action_statistics(loader, num_classes):
+    action_samples = defaultdict(list)
+
+    for x, labels in loader:
+        x = x.float()
+        labels = labels.long()
+
+        for action_id in labels.unique():
+            aciton_id = int(action_id.item())
+            action_samples[action_id].append(x[labels == action_id].cpu())
+
+    action_stats = {}
+
+    for action_id in range(num_classes):
+        if action_id not in action_samples:
+            continue
+
+        x = torch.cat(action_samples[action_id], dim=0)
+
+        stats = compute_joint_statistics(x)
+        stats["num_samples"] = x.shape[0]
+
+        action_stats[action_id] = stats
+
+    return action_stats
+
+def print_action_statistics(action_stats):
+    for action_id, stats in action_stats.items():
+        print(f"\nAction {action_id} | Samples: {stats['num_samples']}")
+
+        print("Speed mean       :", stats["speed_mean"].mean().item())
+        print("Acceleration mean:", stats["acceleration_mean"].mean().item())
+        print("Range mean       :", stats["range_mean"].mean().item())
+        print("Path mean        :", stats["path_mean"].mean().item())
+
+
 if __name__ == "__main__":
-    torch.manual_seed(0)
-
-    x = torch.randn(8, 2, 100, 25, 3)
-
-    stats = compute_joint_statistics(x)
-
-    for name, value in stats.items():
-        print(f"{name:20s}: {value.shape}")
-
-    assert stats["speed_mean"].shape == (25,)
-    assert stats["acceleration_mean"].shape == (25,)
-    assert stats["range_mean"].shape == (25,)
-    assert stats["path_mean"].shape == (25,)
+    # config 작성 후 test
+    pass
