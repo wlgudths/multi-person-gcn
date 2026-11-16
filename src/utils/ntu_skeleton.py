@@ -1,3 +1,4 @@
+import csv
 import numpy as np
 from pathlib import Path
 
@@ -101,6 +102,41 @@ def read_missing_samples(path):
 def filter_missing_samples(files, missing_samples):
     return [path for path in files if path.stem not in missing_samples]
 
+def save_dataset_index(files, save_path, data_root):
+    save_path = Path(save_path)
+    data_root = Path(data_root).resolve()
+    
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with save_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+
+        writer.writerow([
+            "sample_id",
+            "path",
+            "setup",
+            "camera",
+            "subject",
+            "repetition",
+            "action",
+        ])
+
+        for path in files:
+            path = Path(path)
+            metadata = _parse_sample_name(path.stem)
+
+            relative_path = path.resolve().relative_to(data_root)
+
+            writer.writerow([
+                path.stem,
+                relative_path.as_posix(),
+                metadata["setup"],
+                metadata["camera"],
+                metadata["subject"],
+                metadata["repetition"],
+                metadata["action"]
+            ])
+
 
 if __name__ == "__main__":
     root1 = Path("D:/데이터셋/NTU RGB+D 120 - Skeletons/nturgbd_skeletons_s001_to_s017")
@@ -131,3 +167,9 @@ if __name__ == "__main__":
     print("Actually removed:", len(files) - len(filtered_files))
     print("Not found:", len(not_found))
     print(not_found)
+
+    save_path = root1.parent / "ntu120_index.csv"
+    save_dataset_index(filtered_files, save_path, root1.parent)
+
+    print("Saved:", save_path)
+    print("Samples:", len(filtered_files))
