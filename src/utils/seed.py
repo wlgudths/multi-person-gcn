@@ -14,4 +14,3 @@ def set_seed(seed=0, deterministic=True):
     if deterministic:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-

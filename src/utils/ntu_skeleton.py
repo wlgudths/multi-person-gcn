@@ -84,6 +84,9 @@ def skeleton_to_array(sample):
 
     return data, mask, body_ids
 
+def select_bodies_by_motion(data, mask, body_ids, max_bodies=2):
+    motion = np.array([])
+
 def find_skeleton_files(*roots):
     files = []
 
@@ -144,32 +147,14 @@ if __name__ == "__main__":
 
     files = find_skeleton_files(root1, root2)
 
-    print("Total:", len(files))
-    print("First:", files[0].name)
-    print("Last :", files[-1].name)
-
     assert len(files) == 114480
 
     missing_path = "D:/데이터셋/NTU RGB+D 120 - Skeletons/NTU_RGBD120_samples_with_missing_skeletons.txt"
-
     missing_samples = read_missing_samples(missing_path)
     filtered_files = filter_missing_samples(files, missing_samples)
 
-    print("Missing :", len(missing_samples))
-    print("Before  :", len(files))
-    print("After   :", len(filtered_files))
-
     file_ids = {path.stem for path in files}
-
     not_found = missing_samples - file_ids
-
-    print("Missing list:", len(missing_samples))
-    print("Actually removed:", len(files) - len(filtered_files))
-    print("Not found:", len(not_found))
-    print(not_found)
 
     save_path = root1.parent / "ntu120_index.csv"
     save_dataset_index(filtered_files, save_path, root1.parent)
-
-    print("Saved:", save_path)
-    print("Samples:", len(filtered_files))
