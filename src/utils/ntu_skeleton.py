@@ -85,7 +85,11 @@ def skeleton_to_array(sample):
     return data, mask, body_ids
 
 def select_bodies_by_motion(data, mask, body_ids, max_bodies=2):
-    motion = np.array([])
+    motion = np.array([np.var(data[i, mask[i]], axis=0).sum() for i in range(len(body_ids))])
+
+    indices = np.argsort(-motion, kind="stable")[:max_bodies]
+
+    return (data[indices], mask[indices], [body_ids[i] for i in indices])
 
 def find_skeleton_files(*roots):
     files = []
